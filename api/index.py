@@ -1,99 +1,124 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from pathlib import Path
-import json
-import math
-
+from statistics import mean
 
 app = FastAPI()
 
-
-# Allow browser-based dashboards from any website to send POST requests.
+# Enable CORS for requests from any origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
     allow_methods=["POST"],
     allow_headers=["*"],
 )
 
 
-# This describes the JSON body that the POST request must contain.
+# Request format expected by the endpoint
 class AnalyticsRequest(BaseModel):
     regions: list[str]
     threshold_ms: float
 
 
-# Read the supplied telemetry bundle once, when this function instance starts.
-DATA_FILE = Path(__file__).with_name("q-vercel-latency.json")
+# Telemetry data
+DATA = [
+    {"region": "apac", "latency_ms": 122.87, "uptime_pct": 99.383},
+    {"region": "apac", "latency_ms": 171.7, "uptime_pct": 98.451},
+    {"region": "apac", "latency_ms": 176.37, "uptime_pct": 98.4},
+    {"region": "apac", "latency_ms": 122.21, "uptime_pct": 98.433},
+    {"region": "apac", "latency_ms": 116.79, "uptime_pct": 98.845},
+    {"region": "apac", "latency_ms": 200.06, "uptime_pct": 99.026},
+    {"region": "apac", "latency_ms": 191.05, "uptime_pct": 98.15},
+    {"region": "apac", "latency_ms": 145.38, "uptime_pct": 98.417},
+    {"region": "apac", "latency_ms": 191.44, "uptime_pct": 97.945},
+    {"region": "apac", "latency_ms": 227.41, "uptime_pct": 99.241},
+    {"region": "apac", "latency_ms": 165.87, "uptime_pct": 98.13},
+    {"region": "apac", "latency_ms": 164.14, "uptime_pct": 99.04},
 
-with DATA_FILE.open("r", encoding="utf-8") as file:
-    TELEMETRY = json.load(file)
+    {"region": "emea", "latency_ms": 137.59, "uptime_pct": 98.509},
+    {"region": "emea", "latency_ms": 194.54, "uptime_pct": 97.519},
+    {"region": "emea", "latency_ms": 204.91, "uptime_pct": 99.099},
+    {"region": "emea", "latency_ms": 199.57, "uptime_pct": 98.889},
+    {"region": "emea", "latency_ms": 197.77, "uptime_pct": 98.567},
+    {"region": "emea", "latency_ms": 120.05, "uptime_pct": 97.144},
+    {"region": "emea", "latency_ms": 156.44, "uptime_pct": 98.443},
+    {"region": "emea", "latency_ms": 219.51, "uptime_pct": 97.878},
+    {"region": "emea", "latency_ms": 161.42, "uptime_pct": 98.199},
+    {"region": "emea", "latency_ms": 214.08, "uptime_pct": 99.323},
+    {"region": "emea", "latency_ms": 119.66, "uptime_pct": 99.409},
+    {"region": "emea", "latency_ms": 204.7, "uptime_pct": 99.217},
+
+    {"region": "amer", "latency_ms": 119.15, "uptime_pct": 97.656},
+    {"region": "amer", "latency_ms": 205.55, "uptime_pct": 98.303},
+    {"region": "amer", "latency_ms": 213.09, "uptime_pct": 98.191},
+    {"region": "amer", "latency_ms": 130.83, "uptime_pct": 98.901},
+    {"region": "amer", "latency_ms": 145.82, "uptime_pct": 97.731},
+    {"region": "amer", "latency_ms": 223.2, "uptime_pct": 98.191},
+    {"region": "amer", "latency_ms": 186.47, "uptime_pct": 98.364},
+    {"region": "amer", "latency_ms": 153.57, "uptime_pct": 99.257},
+    {"region": "amer", "latency_ms": 137.3, "uptime_pct": 97.522},
+    {"region": "amer", "latency_ms": 163.55, "uptime_pct": 97.577},
+    {"region": "amer", "latency_ms": 167.67, "uptime_pct": 97.366},
+    {"region": "amer", "latency_ms": 113.02, "uptime_pct": 97.116},
+]
 
 
-def mean(numbers: list[float]) -> float:
-    return sum(numbers) / len(numbers)
-
-
-def percentile_95(numbers: list[float]) -> float:
-    """
-    Calculate p95 using linear interpolation, equivalent to NumPy's
-    usual percentile method.
-
-    Example: if there are 100 sorted values, p95 lies at position 94.05
-    when counting positions from zero.
-    """
-    values = sorted(numbers)
+def percentile_95(values):
+    """Calculate the 95th percentile using linear interpolation."""
+    values = sorted(values)
 
     if len(values) == 1:
         return values[0]
 
-    position = 0.95 * (len(values) - 1)
-    lower_index = math.floor(position)
-    upper_index = math.ceil(position)
+    position = (len(values) - 1) * 0.95
+    lower = int(position)
+    upper = lower + 1
 
-    if lower_index == upper_index:
-        return values[lower_index]
+    if upper >= len(values):
+        return values[lower]
 
-    fraction = position - lower_index
+    fraction = position - lower
 
-    return (
-        values[lower_index]
-        + fraction * (values[upper_index] - values[lower_index])
-    )
+    return values[lower] + (values[upper] - values[lower]) * fraction
 
 
-@app.post("/analytics")
+@app.post("/")
 def analytics(request: AnalyticsRequest):
-    results = {}
+    result = {}
 
     for region in request.regions:
-        region_records = [
-            record
-            for record in TELEMETRY
-            if record["region"] == region
+
+        # Get records belonging to this region
+        records = [
+            row for row in DATA
+            if row["region"] == region
         ]
 
-        # A clear error is better than returning made-up averages for
-        # a region that is not present in the telemetry file.
-        if not region_records:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No telemetry records found for region: {region}"
-            )
+        # If the requested region doesn't exist
+        if not records:
+            continue
 
-        latencies = [record["latency_ms"] for record in region_records]
-        uptimes = [record["uptime"] for record in region_records]
+        latencies = [
+            row["latency_ms"]
+            for row in records
+        ]
 
-        results[region] = {
+        uptimes = [
+            row["uptime_pct"]
+            for row in records
+        ]
+
+        # Count records whose latency is above the threshold
+        breaches = sum(
+            row["latency_ms"] > request.threshold_ms
+            for row in records
+        )
+
+        result[region] = {
             "avg_latency": mean(latencies),
             "p95_latency": percentile_95(latencies),
             "avg_uptime": mean(uptimes),
-            "breaches": sum(
-                latency > request.threshold_ms
-                for latency in latencies
-            )
+            "breaches": breaches
         }
 
-    return results
+    return result
