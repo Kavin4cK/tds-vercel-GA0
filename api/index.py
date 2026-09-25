@@ -1,16 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from statistics import mean
+
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
+    allow_methods=["POST", "OPTIONS"],
     allow_headers=["*"],
-    allow_credentials=False,
 )
 
 # Request format expected by the endpoint
@@ -86,28 +87,17 @@ def analytics(request: AnalyticsRequest):
     result = {}
 
     for region in request.regions:
-
-        # Get records belonging to this region
         records = [
             row for row in DATA
             if row["region"] == region
         ]
 
-        # If the requested region doesn't exist
         if not records:
             continue
 
-        latencies = [
-            row["latency_ms"]
-            for row in records
-        ]
+        latencies = [row["latency_ms"] for row in records]
+        uptimes = [row["uptime_pct"] for row in records]
 
-        uptimes = [
-            row["uptime_pct"]
-            for row in records
-        ]
-
-        # Count records whose latency is above the threshold
         breaches = sum(
             row["latency_ms"] > request.threshold_ms
             for row in records
@@ -120,4 +110,9 @@ def analytics(request: AnalyticsRequest):
             "breaches": breaches
         }
 
-    return result
+    return JSONResponse(
+        content=result,
+        headers={
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
