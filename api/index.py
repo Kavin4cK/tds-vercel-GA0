@@ -5,14 +5,13 @@ from statistics import mean
 
 app = FastAPI()
 
-# Enable CORS for requests from any origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST"],
+    allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=False,
 )
-
 
 # Request format expected by the endpoint
 class AnalyticsRequest(BaseModel):
